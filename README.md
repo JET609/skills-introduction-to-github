@@ -11,7 +11,7 @@
 
 # 🚀 Introduction to GitHub
 
-_Get started using GitHub in less than an hour._
+[![Typing SVG](https://readme-typing-svg.herokuapp.com?font=Fira+Code&weight=600&size=28&duration=3000&pause=1000&color=2F81F7&center=true&vCenter=true&width=600&lines=Get+started+using+GitHub;Learn+in+less+than+an+hour!;Master+Git+and+GitHub+basics)](https://git.io/typing-svg)
 
 <!-- Automated Badges -->
 ![GitHub repo size](https://img.shields.io/github/repo-size/JET609/skills-introduction-to-github?style=for-the-badge&logo=github)
@@ -19,6 +19,16 @@ _Get started using GitHub in less than an hour._
 ![GitHub forks](https://img.shields.io/github/forks/JET609/skills-introduction-to-github?style=for-the-badge&logo=github)
 ![GitHub license](https://img.shields.io/github/license/JET609/skills-introduction-to-github?style=for-the-badge)
 ![GitHub last commit](https://img.shields.io/github/last-commit/JET609/skills-introduction-to-github?style=for-the-badge&logo=github)
+
+### 🛠️ Tech Stack
+
+<p align="center">
+  <a href="https://skillicons.dev">
+    <img src="https://skillicons.dev/icons?i=git,github,vscode,markdown,html,css,javascript,python,nodejs&theme=dark&perline=9" alt="Tech Stack" />
+  </a>
+</p>
+
+<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif">
 
 </div>
 
