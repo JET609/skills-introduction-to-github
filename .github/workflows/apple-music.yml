@@ -1,0 +1,207 @@
+name: Apple Music Profile Integration
+
+# Updates GitHub profile README with Apple Music activity
+on:
+  schedule:
+    # Run every 15 minutes to show current/recent music
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Prevent concurrent runs
+concurrency:
+  group: apple-music-update
+  cancel-in-progress: false
+
+jobs:
+  update-apple-music:
+    name: Update Apple Music activity
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    
+    steps:
+      - name: Checkout profile repository
+        uses: actions/checkout@v5
+        with:
+          repository: JET609/JET609
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 1
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+      
+      - name: Update Apple Music section
+        env:
+          APPLE_MUSIC_API_KEY: ${{ secrets.APPLE_MUSIC_API_KEY }}
+          APPLE_MUSIC_USER_TOKEN: ${{ secrets.APPLE_MUSIC_USER_TOKEN }}
+        run: |
+          cat > update_music.py << 'EOF'
+          import os
+          import json
+          import re
+          from pathlib import Path
+          from datetime import datetime
+          
+          def fetch_apple_music():
+              """Fetch Apple Music data"""
+              api_key = os.environ.get('APPLE_MUSIC_API_KEY', '')
+              user_token = os.environ.get('APPLE_MUSIC_USER_TOKEN', '')
+              
+              if not api_key or not user_token:
+                  return {
+                      "status": "not_configured",
+                      "message": "Setup Required"
+                  }
+              
+              try:
+                  import requests
+                  headers = {
+                      'Authorization': f'Bearer {api_key}',
+                      'Music-User-Token': user_token
+                  }
+                  response = requests.get(
+                      'https://api.music.apple.com/v1/me/recent/played',
+                      headers=headers,
+                      timeout=10
+                  )
+                  
+                  if response.status_code == 200:
+                      data = response.json()
+                      tracks = data.get('data', [])
+                      if tracks:
+                          latest = tracks[0].get('attributes', {})
+                          artwork = latest.get('artwork', {}).get('url', '')
+                          if artwork:
+                              artwork = artwork.replace('{w}', '100').replace('{h}', '100')
+                          
+                          duration = latest.get('durationInMillis', 0) // 1000
+                          mins = duration // 60
+                          secs = duration % 60
+                          
+                          return {
+                              "status": "success",
+                              "track": latest.get('name', 'Unknown'),
+                              "artist": latest.get('artistName', 'Unknown'),
+                              "album": latest.get('albumName', 'Unknown'),
+                              "genre": latest.get('genreNames', ['Unknown'])[0],
+                              "duration": f"{mins}:{secs:02d}",
+                              "artwork": artwork,
+                              "url": latest.get('url', ''),
+                              "updated": datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+                          }
+                  return {"status": "no_tracks", "message": "No recent tracks"}
+              except Exception as e:
+                  return {"status": "error", "message": str(e)}
+          
+          def generate_music_section(data):
+              """Generate markdown section"""
+              status = data.get('status')
+              
+              if status == 'success':
+                  section = f"""
+          ### 🎵 Currently Listening
+          
+          <div align="center">
+          """
+                  if data.get('artwork'):
+                      section += f"\n![Album]({data['artwork']})\n\n"
+                  else:
+                      section += "\n🎵\n\n"
+                  
+                  section += f"""**[{data['track']}]({data['url']})**  
+          by **{data['artist']}**
+          
+          📀 Album: {data['album']}  
+          🎸 Genre: {data['genre']}  
+          ⏱️ Duration: {data['duration']}
+          
+          <sub>Last updated: {data['updated']}</sub>
+          
+          </div>
+          """
+              elif status == 'not_configured':
+                  section = """
+          ### 🎵 Apple Music
+          
+          Setup Required - Add API credentials to display your music.
+          
+          See APPLE_MUSIC_SETUP.md for instructions.
+          """
+              else:
+                  section = f"""
+          ### 🎵 Apple Music
+          
+          {data.get('message', 'No music data available')}
+          """
+              
+              return section
+          
+          def update_readme(music_section):
+              """Update README with music section"""
+              readme = Path('README.md')
+              if not readme.exists():
+                  print("README.md not found")
+                  return False
+              
+              content = readme.read_text(encoding='utf-8')
+              start = '<!--APPLE_MUSIC_START-->'
+              end = '<!--APPLE_MUSIC_END-->'
+              
+              if start in content and end in content:
+                  pattern = f'{re.escape(start)}.*?{re.escape(end)}'
+                  new_content = f'{start}{music_section}{end}'
+                  updated = re.sub(pattern, new_content, content, flags=re.DOTALL)
+                  
+                  if updated != content:
+                      readme.write_text(updated, encoding='utf-8')
+                      print("README updated")
+                      return True
+                  print("No changes needed")
+                  return False
+              else:
+                  print("Add markers to README: <!--APPLE_MUSIC_START--> and <!--APPLE_MUSIC_END-->")
+                  return False
+          
+          # Main execution
+          music_data = fetch_apple_music()
+          print(f"Status: {music_data.get('status')}")
+          
+          section = generate_music_section(music_data)
+          update_readme(section)
+          EOF
+          
+          python update_music.py
+      
+      - name: Commit and push changes
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          if [[ -n "$(git status --porcelain)" ]]; then
+            git add README.md
+            git commit -m "chore: 🎵 update Apple Music activity [skip ci]" || exit 0
+            
+            # Retry logic
+            max_retries=3
+            retry_count=0
+            until git push || [ $retry_count -eq $max_retries ]; do
+              retry_count=$((retry_count + 1))
+              echo "Push attempt $retry_count/$max_retries"
+              sleep 2
+              git pull --rebase origin main
+            done
+            
+            echo "Apple Music section updated!"
+          else
+            echo "No changes to commit"
+          fi
