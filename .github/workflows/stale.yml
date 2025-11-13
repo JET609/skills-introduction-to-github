@@ -1,0 +1,80 @@
+name: Stale Issues and PRs
+
+# Intelligent management of inactive issues and pull requests
+on:
+  schedule:
+    - cron: '30 1 * * *' # Run daily at 1:30 AM UTC (off-peak hours for better performance)
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
+  contents: read
+
+jobs:
+  stale:
+    name: Mark and close stale items
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Mark stale issues and PRs
+        uses: actions/stale@v9
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          
+          # Issue configuration - more lenient for learning repos
+          days-before-issue-stale: 90
+          days-before-issue-close: 21
+          stale-issue-message: |
+            👋 This issue has been automatically marked as stale because it has not had any activity for 90 days.
+            
+            **It will be closed in 21 days if no further activity occurs.**
+            
+            If this issue is still relevant, please:
+            - Add a comment to keep it open
+            - Update the issue with new information
+            - Reference it in related work
+            
+            Thank you for your contributions! 🙏
+          close-issue-message: |
+            This issue was automatically closed due to inactivity.
+            
+            If you believe this issue is still relevant, please feel free to reopen it or create a new issue with updated information.
+          stale-issue-label: 'stale'
+          close-issue-label: 'auto-closed'
+          exempt-issue-labels: 'pinned,security,help-wanted,good-first-issue,keep-open'
+          
+          # PR configuration - quicker turnaround for PRs
+          days-before-pr-stale: 45
+          days-before-pr-close: 14
+          stale-pr-message: |
+            👋 This pull request has been automatically marked as stale because it has not had any activity for 45 days.
+            
+            **It will be closed in 14 days if no further activity occurs.**
+            
+            If this PR is still relevant, please:
+            - Rebase on the latest main branch
+            - Respond to any review feedback
+            - Add a comment explaining the status
+            
+            Thank you for your contributions! 🙏
+          close-pr-message: |
+            This pull request was automatically closed due to inactivity.
+            
+            If you'd like to continue this work, please reopen this PR or create a new one with rebased changes.
+          stale-pr-label: 'stale'
+          close-pr-label: 'auto-closed'
+          exempt-pr-labels: 'pinned,security,work-in-progress,keep-open'
+          
+          # Performance and behavior settings
+          operations-per-run: 150
+          remove-stale-when-updated: true
+          exempt-milestones: true
+          exempt-all-milestones: true
+          ascending: true # Process oldest first for fairness
+          
+          # Only process stale items, don't close them immediately
+          enable-statistics: true
+          
+          # Rate limiting protection
+          operations-per-run: 150

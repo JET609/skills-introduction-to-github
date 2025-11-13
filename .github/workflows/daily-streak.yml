@@ -1,0 +1,191 @@
+name: Daily Streak Keeper
+
+# Automatically commit daily to maintain GitHub contribution streak
+on:
+  schedule:
+    # Run at 11:30 PM UTC daily (ensures commit happens before day ends)
+    - cron: "30 23 * * *"
+  workflow_dispatch: # Allow manual trigger
+
+permissions:
+  contents: write
+
+# Prevent overlapping runs
+concurrency:
+  group: daily-streak
+  cancel-in-progress: false
+
+jobs:
+  keep-streak:
+    name: Make daily commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Configure Git
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      
+      - name: Check if commit already made today
+        id: check
+        run: |
+          # Get today's date in UTC
+          TODAY=$(date -u '+%Y-%m-%d')
+          
+          # Check if there's already a commit today
+          LAST_COMMIT_DATE=$(git log -1 --format=%cd --date=format:'%Y-%m-%d' 2>/dev/null || echo "none")
+          
+          if [ "$LAST_COMMIT_DATE" = "$TODAY" ]; then
+            echo "already_committed=true" >> $GITHUB_OUTPUT
+            echo "✅ Commit already exists for today ($TODAY)"
+          else
+            echo "already_committed=false" >> $GITHUB_OUTPUT
+            echo "📝 No commit yet for today ($TODAY), will create one"
+          fi
+      
+      - name: Generate streak data
+        if: steps.check.outputs.already_committed == 'false'
+        run: |
+          # Create directory if it doesn't exist
+          mkdir -p .github/streak
+          
+          # Get current date and time
+          CURRENT_DATE=$(date -u '+%Y-%m-%d')
+          CURRENT_TIME=$(date -u '+%H:%M:%S UTC')
+          TIMESTAMP=$(date -u '+%s')
+          DAY_OF_YEAR=$(date -u '+%j')
+          
+          # Calculate streak (count consecutive days with commits)
+          STREAK_COUNT=0
+          if [ -f .github/streak/history.txt ]; then
+            STREAK_COUNT=$(tail -1 .github/streak/history.txt | cut -d',' -f1 | grep -o '[0-9]*' || echo 0)
+            STREAK_COUNT=$((STREAK_COUNT + 1))
+          else
+            STREAK_COUNT=1
+          fi
+          
+          # Create/update streak file with daily stats
+          cat > .github/streak/streak.json << EOF
+          {
+            "current_date": "$CURRENT_DATE",
+            "current_time": "$CURRENT_TIME",
+            "timestamp": $TIMESTAMP,
+            "day_of_year": $DAY_OF_YEAR,
+            "streak_count": $STREAK_COUNT,
+            "commit_message": "Daily streak keeper commit",
+            "automated": true
+          }
+          EOF
+          
+          # Append to history
+          echo "$STREAK_COUNT,$CURRENT_DATE,$CURRENT_TIME" >> .github/streak/history.txt
+          
+          # Create a motivational message
+          MESSAGES=(
+            "🔥 Another day, another commit! Streak day $STREAK_COUNT"
+            "💪 Consistency is key! Day $STREAK_COUNT of the streak"
+            "🚀 Keep the momentum going! Streak: $STREAK_COUNT days"
+            "⭐ Daily commitment pays off! Day $STREAK_COUNT"
+            "🎯 Streak maintained! $STREAK_COUNT days and counting"
+            "📈 Growth through consistency! Day $STREAK_COUNT"
+            "✨ Building habits one day at a time! Streak: $STREAK_COUNT"
+          )
+          
+          # Select random message
+          RANDOM_INDEX=$((TIMESTAMP % ${#MESSAGES[@]}))
+          SELECTED_MESSAGE="${MESSAGES[$RANDOM_INDEX]}"
+          
+          # Create README-style log
+          cat > .github/streak/README.md << EOF
+          # 📊 Daily Streak Tracker
+          
+          ## Current Streak: $STREAK_COUNT days 🔥
+          
+          **Last Update:** $CURRENT_DATE at $CURRENT_TIME
+          
+          ### Motivation
+          $SELECTED_MESSAGE
+          
+          ### Streak History
+          This automated workflow keeps your GitHub contribution streak alive by making a daily commit.
+          
+          - **Start Date:** $(head -1 .github/streak/history.txt | cut -d',' -f2)
+          - **Current Streak:** $STREAK_COUNT days
+          - **Today's Commit:** Day $DAY_OF_YEAR of $(date -u '+%Y')
+          
+          ### How It Works
+          - Runs automatically every day at 11:30 PM UTC
+          - Creates a commit only if none exists for the current day
+          - Tracks streak count and history
+          - Generates motivational messages
+          
+          ---
+          *Automated by GitHub Actions*
+          EOF
+          
+          echo "streak_count=$STREAK_COUNT" >> $GITHUB_OUTPUT
+          echo "message=$SELECTED_MESSAGE" >> $GITHUB_OUTPUT
+      
+      - name: Commit streak data
+        if: steps.check.outputs.already_committed == 'false'
+        run: |
+          # Add all streak files
+          git add .github/streak/
+          
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "ℹ️ No changes to commit"
+            exit 0
+          fi
+          
+          # Create commit with streak info
+          STREAK_COUNT=$(cat .github/streak/streak.json | grep -o '"streak_count": [0-9]*' | grep -o '[0-9]*')
+          CURRENT_DATE=$(date -u '+%Y-%m-%d')
+          
+          git commit -m "chore: 🔥 daily streak keeper - day $STREAK_COUNT
+
+          Automated daily commit to maintain GitHub contribution streak.
+          Date: $CURRENT_DATE
+          Streak: $STREAK_COUNT days
+          
+          [skip ci]"
+          
+          echo "✅ Commit created for streak day $STREAK_COUNT"
+      
+      - name: Push changes
+        if: steps.check.outputs.already_committed == 'false'
+        run: |
+          # Retry logic for robustness
+          max_retries=3
+          retry_count=0
+          
+          until git push || [ $retry_count -eq $max_retries ]; do
+            retry_count=$((retry_count + 1))
+            echo "⚠️ Push failed, retrying ($retry_count/$max_retries)..."
+            sleep 2
+            git pull --rebase origin ${{ github.ref_name }}
+          done
+          
+          if [ $retry_count -eq $max_retries ]; then
+            echo "❌ Failed to push after $max_retries attempts"
+            exit 1
+          fi
+          
+          echo "✅ Streak commit pushed successfully!"
+      
+      - name: Summary
+        if: always()
+        run: |
+          if [ "${{ steps.check.outputs.already_committed }}" = "true" ]; then
+            echo "✅ Streak already maintained for today"
+          else
+            STREAK_COUNT=$(cat .github/streak/streak.json 2>/dev/null | grep -o '"streak_count": [0-9]*' | grep -o '[0-9]*' || echo "N/A")
+            echo "✅ Streak commit completed! Current streak: $STREAK_COUNT days 🔥"
+          fi
