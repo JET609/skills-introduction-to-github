@@ -1,67 +1,102 @@
 name: Auto Label
 
-# Automatically label pull requests and issues
+# Automatically label pull requests and issues with intelligent content analysis
 on:
   pull_request:
-    types: [opened, reopened]
+    types: [opened, reopened, edited]
   issues:
-    types: [opened, reopened]
+    types: [opened, reopened, edited]
 
 permissions:
   pull-requests: write
   issues: write
 
+# Prevent concurrent labeling of the same item
+concurrency:
+  group: auto-label-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: true
+
 jobs:
   auto-label:
+    name: Add intelligent labels
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - name: Add labels
+      - name: Add labels based on content
         uses: actions/github-script@v7
         with:
+          retries: 2
           script: |
             const isPR = !!context.payload.pull_request;
             const item = isPR ? context.payload.pull_request : context.payload.issue;
-            const labels = [];
+            const labels = new Set();
             
-            // Add labels based on content
-            const title = item.title.toLowerCase();
-            const body = (item.body || '').toLowerCase();
+            // Normalize text for better matching
+            const title = (item.title || '').toLowerCase().trim();
+            const body = (item.body || '').toLowerCase().trim();
+            const combined = `${title} ${body}`;
             
-            // Documentation related
-            if (title.includes('doc') || title.includes('readme') || body.includes('documentation')) {
-              labels.push('documentation');
+            // Get existing labels to avoid duplicates
+            const existingLabels = item.labels.map(l => l.name);
+            
+            // Documentation patterns (more comprehensive)
+            const docPatterns = ['doc', 'readme', 'documentation', 'docs', 'guide', 'tutorial', 'wiki'];
+            if (docPatterns.some(p => combined.includes(p))) {
+              labels.add('documentation');
             }
             
-            // Bug related
-            if (title.includes('bug') || title.includes('fix') || title.includes('error')) {
-              labels.push('bug');
+            // Bug patterns (enhanced detection)
+            const bugPatterns = ['bug', 'fix', 'error', 'issue', 'broken', 'crash', 'fail', 'problem', 'wrong'];
+            if (bugPatterns.some(p => combined.includes(p))) {
+              labels.add('bug');
             }
             
-            // Enhancement related
-            if (title.includes('feature') || title.includes('enhancement') || title.includes('improve')) {
-              labels.push('enhancement');
+            // Enhancement patterns
+            const enhancementPatterns = ['feature', 'enhancement', 'improve', 'add', 'new', 'request', 'proposal'];
+            if (enhancementPatterns.some(p => combined.includes(p))) {
+              labels.add('enhancement');
             }
             
-            // Question related
-            if (title.includes('question') || title.includes('how to') || title.includes('help')) {
-              labels.push('question');
+            // Question patterns
+            const questionPatterns = ['question', 'how to', 'help', 'what is', 'why', 'when', 'where', 'ask'];
+            if (questionPatterns.some(p => combined.includes(p))) {
+              labels.add('question');
             }
             
-            // Add type label
+            // Security patterns
+            const securityPatterns = ['security', 'vulnerability', 'cve', 'exploit', 'xss', 'injection'];
+            if (securityPatterns.some(p => combined.includes(p))) {
+              labels.add('security');
+            }
+            
+            // Performance patterns
+            const performancePatterns = ['performance', 'slow', 'speed', 'optimize', 'faster', 'latency'];
+            if (performancePatterns.some(p => combined.includes(p))) {
+              labels.add('performance');
+            }
+            
+            // Add type label for PRs
             if (isPR) {
-              labels.push('pull-request');
+              labels.add('pull-request');
             }
             
-            // Only add labels if we found any
-            if (labels.length > 0) {
+            // Filter out labels that already exist
+            const newLabels = Array.from(labels).filter(l => !existingLabels.includes(l));
+            
+            if (newLabels.length > 0) {
               const number = isPR ? context.payload.pull_request.number : context.payload.issue.number;
-              await github.rest.issues.addLabels({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: number,
-                labels: labels
-              });
-              console.log(`Added labels: ${labels.join(', ')}`);
+              try {
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: number,
+                  labels: newLabels
+                });
+                core.info(`✅ Added labels: ${newLabels.join(', ')}`);
+              } catch (error) {
+                core.warning(`Failed to add labels: ${error.message}`);
+                // Don't fail the workflow if labeling fails
+              }
             } else {
-              console.log('No matching labels found');
+              core.info('ℹ️ No new labels to add (all matching labels already present or no patterns matched)');
             }

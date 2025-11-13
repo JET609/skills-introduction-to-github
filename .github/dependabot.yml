@@ -4,5 +4,30 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-    # Auto-merge minor and patch updates
-    open-pull-requests-limit: 10
+      day: "monday"
+      time: "03:00"
+      timezone: "UTC"
+    # Efficient update management
+    open-pull-requests-limit: 5
+    # Auto-label PRs for easier identification
+    labels:
+      - "dependencies"
+      - "github-actions"
+    # Group minor and patch updates together for efficiency
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    # Pull request settings for better review process
+    pull-request-branch-name:
+      separator: "-"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    reviewers:
+      - "JET609"
+    # Only update if tests pass
+    insecure-external-code-execution: deny
