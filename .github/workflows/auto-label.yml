@@ -1,0 +1,67 @@
+name: Auto Label
+
+# Automatically label pull requests and issues
+on:
+  pull_request:
+    types: [opened, reopened]
+  issues:
+    types: [opened, reopened]
+
+permissions:
+  pull-requests: write
+  issues: write
+
+jobs:
+  auto-label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add labels
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const isPR = !!context.payload.pull_request;
+            const item = isPR ? context.payload.pull_request : context.payload.issue;
+            const labels = [];
+            
+            // Add labels based on content
+            const title = item.title.toLowerCase();
+            const body = (item.body || '').toLowerCase();
+            
+            // Documentation related
+            if (title.includes('doc') || title.includes('readme') || body.includes('documentation')) {
+              labels.push('documentation');
+            }
+            
+            // Bug related
+            if (title.includes('bug') || title.includes('fix') || title.includes('error')) {
+              labels.push('bug');
+            }
+            
+            // Enhancement related
+            if (title.includes('feature') || title.includes('enhancement') || title.includes('improve')) {
+              labels.push('enhancement');
+            }
+            
+            // Question related
+            if (title.includes('question') || title.includes('how to') || title.includes('help')) {
+              labels.push('question');
+            }
+            
+            // Add type label
+            if (isPR) {
+              labels.push('pull-request');
+            }
+            
+            // Only add labels if we found any
+            if (labels.length > 0) {
+              const number = isPR ? context.payload.pull_request.number : context.payload.issue.number;
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: number,
+                labels: labels
+              });
+              console.log(`Added labels: ${labels.join(', ')}`);
+            } else {
+              console.log('No matching labels found');
+            }
